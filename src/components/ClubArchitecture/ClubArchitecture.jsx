@@ -202,103 +202,155 @@ const djFacadeFragmentShader = /* glsl */ `
   uniform vec3 uHits;
   uniform float uTime;
   uniform float uPlaying;
+  uniform float uPulseAge;
+  uniform float uFlashAge;
+  uniform float uBeatPhase;
 
   varying vec2 vUv;
 
-  vec2 gradientDirection(vec2 point) {
-    float angle = fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
-    angle *= 6.2831853;
-    return vec2(cos(angle), sin(angle));
+  float hash21(vec2 point) {
+    return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453123);
   }
 
-  float perlinNoise(vec2 point) {
+  float gradientNoise(vec2 point) {
     vec2 cell = floor(point);
     vec2 local = fract(point);
-    vec2 fade = local * local * local * (local * (local * 6.0 - 15.0) + 10.0);
-    float n00 = dot(gradientDirection(cell), local);
-    float n10 = dot(gradientDirection(cell + vec2(1.0, 0.0)), local - vec2(1.0, 0.0));
-    float n01 = dot(gradientDirection(cell + vec2(0.0, 1.0)), local - vec2(0.0, 1.0));
-    float n11 = dot(gradientDirection(cell + vec2(1.0)), local - vec2(1.0));
-    return mix(mix(n00, n10, fade.x), mix(n01, n11, fade.x), fade.y) * 0.5 + 0.5;
+    vec2 blend = local * local * (3.0 - 2.0 * local);
+    float a = hash21(cell);
+    float b = hash21(cell + vec2(1.0, 0.0));
+    float c = hash21(cell + vec2(0.0, 1.0));
+    float d = hash21(cell + vec2(1.0));
+    return mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
   }
 
   float fbm(vec2 point) {
     float value = 0.0;
-    float amplitude = 0.55;
-    value += perlinNoise(point) * amplitude;
+    value += gradientNoise(point) * 0.52;
     point = point * 2.03 + vec2(17.3, 9.2);
-    amplitude *= 0.5;
-    value += perlinNoise(point) * amplitude;
+    value += gradientNoise(point) * 0.26;
 #ifndef LOW_POWER
     point = point * 2.01 + vec2(5.7, 21.4);
-    amplitude *= 0.5;
-    value += perlinNoise(point) * amplitude;
+    value += gradientNoise(point) * 0.13;
     point = point * 1.97 + vec2(31.2, 4.8);
-    amplitude *= 0.5;
-    value += perlinNoise(point) * amplitude;
+    value += gradientNoise(point) * 0.065;
 #endif
     return value;
   }
 
-  float readBand(float x) {
-    if (x < 0.28) return mix(uBands.x, uBands.y, x / 0.28);
-    if (x < 0.67) return mix(uBands.y, uBands.z, (x - 0.28) / 0.39);
-    return mix(uBands.z, uBands.w, (x - 0.67) / 0.33);
+  float lineGlow(float distanceToLine, float coreWidth, float haloWidth) {
+    float core = 1.0 - smoothstep(0.0, coreWidth, distanceToLine);
+    float halo = 1.0 - smoothstep(0.0, haloWidth, distanceToLine);
+    return core + halo * 0.42;
   }
 
   void main() {
-    float bass = max(uBands.x, uHits.x);
-    float treble = max(uBands.w, uHits.z);
-    float speed = 0.16 + treble * 0.52 + uHits.y * 0.22;
-    vec2 point = vec2(vUv.x * 5.2, vUv.y * 1.35);
-    vec2 motion = vec2(uTime * speed, -uTime * (0.09 + bass * 0.12));
+    float bass = clamp(uBands.x, 0.0, 1.0);
+    float body = clamp(uBands.y, 0.0, 1.0);
+    float presence = clamp(uBands.z, 0.0, 1.0);
+    float high = clamp(max(uBands.w, uHits.z), 0.0, 1.0);
+    float active = mix(0.22, 1.0, uPlaying);
+    float time = uTime;
 
-    vec2 warp = vec2(
-      fbm(point * 0.72 + motion),
-      fbm(point * 0.83 - motion.yx + vec2(13.7, 4.2))
-    );
-    float broad = fbm(point * (1.25 + bass * 0.38) + warp * (1.1 + bass));
-    float detail = fbm(point * 3.1 - warp * 1.7 + motion * 1.8);
-    float turbulence = smoothstep(0.31, 0.82, broad * 0.7 + detail * 0.56);
+    // Work in facade proportions so waves remain round rather than stretched.
+    vec2 point = vec2((vUv.x - 0.5) * 5.68, vUv.y - 0.5);
+    float flowSpeed = 0.18 + high * 0.28 + presence * 0.08;
+    float noiseA = fbm(vec2(point.x * 0.48 + time * flowSpeed, point.y * 2.8 - time * 0.09));
+    float noiseB = fbm(vec2(point.x * 0.72 - time * (0.11 + high * 0.16), point.y * 3.6 + noiseA * 1.7));
+    float warp = (noiseA - 0.5) * 0.2 + (noiseB - 0.5) * 0.12;
 
-    float columns = 44.0;
-    float columnX = floor(vUv.x * columns) / columns;
-    float localX = fract(vUv.x * columns);
-    float barWindow = smoothstep(0.08, 0.2, localX) * (1.0 - smoothstep(0.8, 0.92, localX));
-    float spectrum = readBand(columnX);
-    float crest = clamp(0.12 + spectrum * 0.6 + turbulence * 0.25 + uHits.x * 0.1, 0.08, 0.94);
-    float bars = smoothstep(crest + 0.025, crest - 0.02, vUv.y) * barWindow;
-    float peak = exp(-abs(vUv.y - crest) * 82.0) * barWindow;
+    float amplitude = 0.055 + bass * 0.075 + uHits.x * 0.035;
+    float phaseBreath = sin(uBeatPhase * 6.2831853) * bass * 0.018;
+    float waveA = -0.205 + sin(point.x * 1.18 + time * 0.72 + noiseA * 2.2) * amplitude + warp;
+    float waveB = 0.005 + sin(point.x * 1.52 - time * 0.54 + noiseB * 2.7 + 2.1) * (amplitude * 0.82) - warp * 0.55;
+    float waveC = 0.205 + sin(point.x * 0.94 + time * 0.42 + noiseA * 3.1 + 4.3) * (amplitude * 0.68) + warp * 0.38;
+    waveA -= phaseBreath;
+    waveC += phaseBreath;
 
-    vec3 cyan = vec3(0.02, 0.72, 1.2);
-    vec3 violet = vec3(0.52, 0.16, 1.15);
-    vec3 magenta = vec3(1.25, 0.06, 0.42);
-    vec3 color = mix(cyan, violet, smoothstep(0.16, 0.62, broad));
-    color = mix(color, magenta, smoothstep(0.5, 0.9, detail + vUv.x * 0.22));
-    float contrast = 1.0 + uBands.z * 0.72 + uHits.y * 0.48;
-    color = max(vec3(0.0), (color - 0.38) * contrast + 0.38);
-    color *= 0.72 + turbulence * (0.64 + treble * 0.9) + peak * 1.35;
+    float width = 0.011 + body * 0.009;
+    float ribbonsA = lineGlow(abs(point.y - waveA), width, 0.085 + bass * 0.035);
+    float ribbonsB = lineGlow(abs(point.y - waveB), width * 0.82, 0.072 + presence * 0.035);
+    float ribbonsC = lineGlow(abs(point.y - waveC), width * 0.72, 0.064 + high * 0.03);
+    float ribbons = ribbonsA + ribbonsB * 0.9 + ribbonsC * 0.72;
+
+    // Each kick sends one luminous front from the centre to the facade edges.
+    float radialDistance = length(vec2(point.x * 0.31, point.y * 1.8));
+    float pulseRadius = uPulseAge * (1.25 + bass * 0.45);
+    float kickEnvelope = exp(-uPulseAge * 2.15) * step(uPulseAge, 2.0);
+    float kickWave = exp(-abs(radialDistance - pulseRadius) * 25.0) * kickEnvelope;
+
+    // Clap is a soft, wide photographic flash, never a full-frame hard strobe.
+    float flashEnvelope = exp(-uFlashAge * 4.5) * step(uFlashAge, 1.4);
+    float flashShape = 0.38 + 0.62 * (1.0 - smoothstep(0.0, 0.58, abs(point.y)));
+    float clapFlash = flashEnvelope * flashShape * (0.78 + noiseB * 0.22);
+
+    float plasma = smoothstep(0.42, 0.84, noiseA * 0.62 + noiseB * 0.5);
+    float filaments = 1.0 - smoothstep(0.025, 0.14, abs(sin((noiseA - noiseB) * 8.0 + point.x * 0.42)));
+
+    float sparks = 0.0;
+#ifndef LOW_POWER
+    vec2 sparkPoint = vec2(point.x * 2.35 + time * (0.55 + high), point.y * 10.0);
+    vec2 sparkCell = floor(sparkPoint);
+    vec2 sparkLocal = fract(sparkPoint) - 0.5;
+    float sparkSeed = hash21(sparkCell);
+    float sparkGate = smoothstep(0.91 - high * 0.08, 0.99, sparkSeed);
+    float sparkCore = 1.0 - smoothstep(0.02, 0.34, length(sparkLocal));
+    sparks = sparkGate * sparkCore * (0.28 + high * 1.15);
+#else
+    float mobileGlint = sin(point.x * 3.1 - time * (1.0 + high)) * 0.5 + 0.5;
+    sparks = pow(mobileGlint, 14.0) * high * 0.38;
+#endif
+
+    vec3 cyan = vec3(0.015, 0.68, 1.35);
+    vec3 violet = vec3(0.42, 0.08, 1.28);
+    vec3 magenta = vec3(1.35, 0.025, 0.48);
+    vec3 amber = vec3(1.45, 0.32, 0.035);
+    float colorFlow = smoothstep(0.18, 0.88, noiseB + sin(point.x * 0.37 + time * 0.16) * 0.16);
+    vec3 fieldColor = mix(cyan, violet, colorFlow);
+    fieldColor = mix(fieldColor, magenta, smoothstep(0.48, 0.92, noiseA + presence * 0.16));
+    vec3 ribbonColor = mix(cyan, magenta, clamp(vUv.x * 0.72 + noiseB * 0.34, 0.0, 1.0));
+    ribbonColor = mix(ribbonColor, violet, ribbonsB * 0.24);
+
+    float background = (0.085 + plasma * 0.22 + filaments * 0.11) * active;
+    vec3 color = fieldColor * background;
+    color += ribbonColor * ribbons * (0.72 + body * 0.38) * active;
+    color += mix(cyan, magenta, noiseA) * kickWave * (1.3 + bass * 0.75);
+    color += mix(magenta, vec3(1.15, 0.72, 1.0), noiseB) * clapFlash * (0.68 + presence * 0.42);
+    color += mix(cyan, amber, high) * sparks * active;
+    color += amber * kickWave * high * 0.24;
 
     float edge =
-      smoothstep(0.0, 0.025, vUv.x) *
-      (1.0 - smoothstep(0.975, 1.0, vUv.x)) *
-      smoothstep(0.0, 0.075, vUv.y) *
-      (1.0 - smoothstep(0.925, 1.0, vUv.y));
-    float idle = mix(0.16, 1.0, uPlaying);
-    float alpha = (turbulence * 0.34 + bars * 0.6 + peak * 0.78) * edge * idle;
+      smoothstep(0.0, 0.035, vUv.x) *
+      (1.0 - smoothstep(0.965, 1.0, vUv.x)) *
+      smoothstep(0.0, 0.09, vUv.y) *
+      (1.0 - smoothstep(0.91, 1.0, vUv.y));
+    float alpha = clamp(
+      0.08 * active + background + ribbons * 0.62 + kickWave * 0.86 + clapFlash * 0.42 + sparks * 0.56,
+      0.0,
+      1.0
+    ) * edge;
     if (alpha < 0.004) discard;
     gl_FragColor = vec4(color, alpha);
   }
 `;
 
-function DjFacadeEqualizer({ audioBus, lowPower }) {
+function DjFacadeGenerativeDisplay({ audioBus, lowPower }) {
   const displayTime = useRef(0);
+  const eventState = useRef({
+    kickCount: audioBus.kickHitCount || 0,
+    clapCount: audioBus.clapHitCount || 0,
+    seekVersion: audioBus.seekVersion || 0,
+    pulseAge: 10,
+    flashAge: 10,
+  });
   const uniforms = useMemo(
     () => ({
       uBands: { value: new THREE.Vector4() },
       uHits: { value: new THREE.Vector3() },
       uTime: { value: 0 },
       uPlaying: { value: 0 },
+      uPulseAge: { value: 10 },
+      uFlashAge: { value: 10 },
+      uBeatPhase: { value: 0 },
     }),
     []
   );
@@ -328,6 +380,33 @@ function DjFacadeEqualizer({ audioBus, lowPower }) {
       9.2,
       3.8
     );
+
+    const events = eventState.current;
+    const seekVersion = audioBus.seekVersion || 0;
+    if (seekVersion !== events.seekVersion) {
+      events.seekVersion = seekVersion;
+      events.kickCount = audioBus.kickHitCount || 0;
+      events.clapCount = audioBus.clapHitCount || 0;
+    } else {
+      if (audioBus.isPlaying && (audioBus.kickHitCount || 0) !== events.kickCount) {
+        events.pulseAge = 0;
+        events.kickCount = audioBus.kickHitCount || 0;
+      }
+      if (audioBus.isPlaying && (audioBus.clapHitCount || 0) !== events.clapCount) {
+        events.flashAge = 0;
+        events.clapCount = audioBus.clapHitCount || 0;
+      }
+    }
+    events.pulseAge += delta;
+    events.flashAge += delta;
+    uniforms.uPulseAge.value = events.pulseAge;
+    uniforms.uFlashAge.value = events.flashAge;
+
+    const bpm = audioBus.visualBpm || audioBus.bpm || 0;
+    const beatOffset = audioBus.visualBeatOffset || audioBus.beatOffset || 0;
+    uniforms.uBeatPhase.value = bpm
+      ? (((audioBus.position - beatOffset) * bpm) / 60) % 1
+      : 0;
     uniforms.uPlaying.value = THREE.MathUtils.damp(
       uniforms.uPlaying.value,
       audioBus.isPlaying ? 1 : 0,
@@ -860,7 +939,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
             roughness={0.42}
           />
         </mesh>
-        <DjFacadeEqualizer audioBus={audioBus} lowPower={lowPower} />
+        <DjFacadeGenerativeDisplay audioBus={audioBus} lowPower={lowPower} />
 
         <mesh position={[0, 1.14, 0.02]} castShadow={!lowPower} receiveShadow>
           <boxGeometry args={[4.72, 0.1, 1.08]} />
