@@ -1173,29 +1173,21 @@ function App() {
   const [musicPlaying, setMusicPlaying] = useState(() =>
     new URLSearchParams(window.location.search).has("autostart")
   );
+  const [playerCollapsed, setPlayerCollapsed] = useState(false);
   const [track, setTrack] = useState(() => defaultTrack);
   const [audioInfo, setAudioInfo] = useState(null);
   const [tempoBpm, setTempoBpm] = useState(null);
   const { progress } = useProgress();
   const audioBus = useRef(createAudioBus()).current;
-  const tempoOptions = useMemo(() => {
-    if (!audioInfo?.bpm) return [];
-
-    const options = [audioInfo.bpm];
-    if (audioInfo.bpm >= 100) options.push(Math.round(audioInfo.bpm / 2));
-    if (audioInfo.bpm <= 110) options.push(Math.round(audioInfo.bpm * 2));
-    return [...new Set(options)].filter((bpm) => bpm >= 45 && bpm <= 220);
-  }, [audioInfo]);
-  const currentTempoIndex = Math.max(0, tempoOptions.indexOf(tempoBpm));
-  const nextTempo =
-    tempoOptions.length > 1
-      ? tempoOptions[(currentTempoIndex + 1) % tempoOptions.length]
-      : null;
-  const tempoSwitchLabel = nextTempo
-    ? nextTempo < tempoBpm
-      ? `½ ${nextTempo}`
-      : `×2 ${nextTempo}`
-    : null;
+  const libraryTrackIndex = libraryTracks.findIndex(
+    (entry) => entry.id === track.id
+  );
+  const trackPosition =
+    libraryTrackIndex >= 0
+      ? `TRACK ${String(libraryTrackIndex + 1).padStart(2, "0")} / ${String(
+          libraryTracks.length
+        ).padStart(2, "0")}`
+      : "CUSTOM TRACK";
   const loadProgress = Math.round(Math.min(Math.max(progress, 0), 100));
   const assetsReady =
     sceneReady && dancersReady && audioReady && loadProgress >= 100;
@@ -1243,11 +1235,8 @@ function App() {
     });
   }, []);
 
-  const handleLibraryTrackChange = useCallback(
-    (event) => {
-      const nextTrack = libraryTracks.find(
-        (entry) => entry.id === event.currentTarget.value
-      );
+  const activateTrack = useCallback(
+    (nextTrack) => {
       if (!nextTrack || nextTrack.id === track.id) return;
 
       setAudioInfo(null);
@@ -1258,16 +1247,37 @@ function App() {
     [track.id]
   );
 
+  const handleLibraryTrackChange = useCallback(
+    (event) => {
+      activateTrack(
+        libraryTracks.find((entry) => entry.id === event.currentTarget.value)
+      );
+    },
+    [activateTrack]
+  );
+
+  const handleTrackStep = useCallback(
+    (direction) => {
+      if (!libraryTracks.length) return;
+
+      const currentIndex = libraryTracks.findIndex(
+        (entry) => entry.id === track.id
+      );
+      const nextIndex =
+        currentIndex < 0
+          ? direction > 0
+            ? 0
+            : libraryTracks.length - 1
+          : (currentIndex + direction + libraryTracks.length) %
+            libraryTracks.length;
+      activateTrack(libraryTracks[nextIndex]);
+    },
+    [activateTrack, track.id]
+  );
+
   const handleStart = () => {
     setMusicPlaying(true);
     setStarted(true);
-  };
-
-  const handleTempoToggle = () => {
-    if (!nextTempo) return;
-    audioBus.bpm = nextTempo;
-    audioBus.visualBpm = nextTempo;
-    setTempoBpm(nextTempo);
   };
 
   return (
@@ -1315,54 +1325,98 @@ function App() {
       </Canvas>
 
       {isStarted && (
-        <div className="music-dock">
+        <div
+          className={`music-dock-shell ${
+            playerCollapsed ? "music-dock-shell--collapsed" : ""
+          }`}
+        >
           <button
-            className="music-dock__transport"
+            className="music-dock__drawer-toggle"
             type="button"
-            onClick={() => setMusicPlaying((playing) => !playing)}
-            aria-label={musicPlaying ? "Pause music" : "Play music"}
-            title={musicPlaying ? "Pause music" : "Play music"}
+            onClick={() => setPlayerCollapsed((collapsed) => !collapsed)}
+            aria-controls="phasefloor-player"
+            aria-expanded={!playerCollapsed}
+            aria-label={playerCollapsed ? "Show player" : "Hide player"}
+            title={playerCollapsed ? "Show player" : "Hide player"}
           >
-            {musicPlaying ? "Ⅱ" : "▶"}
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m4 7 6 6 6-6" />
+            </svg>
           </button>
-          <div className="music-dock__track">
-            <label className="music-dock__selector" title={track.name}>
-              <select
-                className="music-dock__track-select"
-                value={track.id}
-                onChange={handleLibraryTrackChange}
-                aria-label="Select track"
-              >
-                {track.source === "upload" && (
-                  <option value={track.id}>CUSTOM · {track.label}</option>
+
+          <div className="music-dock" id="phasefloor-player">
+            <button
+              className="music-dock__transport"
+              type="button"
+              onClick={() => setMusicPlaying((playing) => !playing)}
+              aria-label={musicPlaying ? "Pause music" : "Play music"}
+              title={musicPlaying ? "Pause music" : "Play music"}
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                {musicPlaying ? (
+                  <>
+                    <rect x="5" y="4" width="3.2" height="12" rx="1" />
+                    <rect x="11.8" y="4" width="3.2" height="12" rx="1" />
+                  </>
+                ) : (
+                  <path d="M6.4 4.2 15.8 10l-9.4 5.8V4.2Z" />
                 )}
-                {libraryTracks.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="music-dock__meta-row">
-              <span className="music-dock__meta">{trackStatus}</span>
-              {nextTempo && (
-                <button
-                  className="music-dock__tempo-switch"
-                  type="button"
-                  onClick={handleTempoToggle}
-                  title={`Use ${nextTempo < tempoBpm ? "half-time" : "double-time"}: ${nextTempo} BPM`}
-                  aria-label={`Use ${nextTempo < tempoBpm ? "half-time" : "double-time"}: ${nextTempo} BPM`}
+              </svg>
+            </button>
+
+            <button
+              className="music-dock__step"
+              type="button"
+              onClick={() => handleTrackStep(-1)}
+              aria-label="Previous track"
+              title="Previous track"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5.2 4.7v10.6M15.2 5.1 7.5 10l7.7 4.9V5.1Z" />
+              </svg>
+            </button>
+
+            <div className="music-dock__track">
+              <label className="music-dock__selector" title={track.name}>
+                <select
+                  className="music-dock__track-select"
+                  value={track.id}
+                  onChange={handleLibraryTrackChange}
+                  aria-label="Select track"
                 >
-                  {tempoSwitchLabel}
-                </button>
-              )}
-            </span>
+                  {track.source === "upload" && (
+                    <option value={track.id}>CUSTOM · {track.label}</option>
+                  )}
+                  {libraryTracks.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="music-dock__meta">
+                {trackPosition} · {trackStatus}
+              </span>
+            </div>
+
+            <button
+              className="music-dock__step"
+              type="button"
+              onClick={() => handleTrackStep(1)}
+              aria-label="Next track"
+              title="Next track"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M14.8 4.7v10.6M4.8 5.1l7.7 4.9-7.7 4.9V5.1Z" />
+              </svg>
+            </button>
+
+            <label className="music-dock__upload">
+              LOAD
+              <input type="file" accept="audio/*" onChange={handleTrackUpload} />
+            </label>
+            <TrackTimeline audioBus={audioBus} />
           </div>
-          <label className="music-dock__upload">
-            LOAD TRACK
-            <input type="file" accept="audio/*" onChange={handleTrackUpload} />
-          </label>
-          <TrackTimeline audioBus={audioBus} />
         </div>
       )}
 
