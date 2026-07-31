@@ -652,10 +652,24 @@ function RotatingDanceStage({ audioBus, lowPower, onDancersReady }) {
 function ReactivePostprocessing({ audioBus, lowPower = false }) {
   const bloom = useRef(null);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (bloom.current) {
-      bloom.current.intensity =
-        0.22 + audioBus.high * 0.12 + audioBus.hat * 0.2;
+      const sustainedGlow =
+        audioBus.bass * 0.24 +
+        audioBus.lowMid * 0.28 +
+        audioBus.presence * 0.3 +
+        audioBus.high * 0.18;
+      const targetIntensity = THREE.MathUtils.clamp(
+        0.27 + sustainedGlow * 0.12 + audioBus.hat * 0.035,
+        0.27,
+        0.42
+      );
+      bloom.current.intensity = THREE.MathUtils.damp(
+        bloom.current.intensity,
+        targetIntensity,
+        targetIntensity > bloom.current.intensity ? 3.8 : 2.4,
+        delta
+      );
     }
   });
 
@@ -666,11 +680,11 @@ function ReactivePostprocessing({ audioBus, lowPower = false }) {
       <Bloom
         ref={bloom}
         mipmapBlur
-        intensity={0.24}
-        luminanceThreshold={0.72}
-        luminanceSmoothing={0.28}
+        intensity={0.27}
+        luminanceThreshold={0.66}
+        luminanceSmoothing={0.36}
       />
-      <Vignette eskil={false} offset={0.18} darkness={0.82} />
+      <Vignette eskil={false} offset={0.2} darkness={0.76} />
     </EffectComposer>
   );
 }

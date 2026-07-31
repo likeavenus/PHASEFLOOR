@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { useFrame, useLoader } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 
@@ -22,25 +22,24 @@ const animations = {
   samba: characterUrl("Samba Dancing.fbx"),
   silly: characterUrl("Silly Dancing.fbx"),
   twerk: characterUrl("Dancing Twerk.fbx"),
-  djDance: characterUrl("Ymca Dance.fbx"),
+  gangnam: characterUrl("Gangnam Style.fbx"),
+  ymca: characterUrl("Ymca Dance.fbx"),
   aggressiveFemale: characterUrl("Dancing Maraschino Step.fbx"),
   aggressiveMale: characterUrl("DancingAgressive.fbx"),
   idle: characterUrl("Idle.fbx"),
   happyIdle: characterUrl("Happy Idle.fbx"),
 };
 
-const supportingDanceAnimations = ["dance", "hipHop", "samba", "silly"];
-const randomSupportingDance = () =>
-  supportingDanceAnimations[
-    Math.floor(Math.random() * supportingDanceAnimations.length)
-  ];
+const danceVariants = ["dance", "featuredDance", "alternateDance"];
 
 const wakeThresholds = [0.12, 0.3, 0.48, 0.68, 0.82, 0.38, 0.74, 0.22, 0.56];
 
 const crowd = [
   {
     model: "female",
-    animation: randomSupportingDance(),
+    animation: "samba",
+    featuredAnimation: "hipHop2",
+    alternateAnimation: "ymca",
     position: [-2.35, -0.96, 1.45],
     rotation: -0.18,
     tint: "#ffb6da",
@@ -49,7 +48,9 @@ const crowd = [
   },
   {
     model: "male",
-    animation: randomSupportingDance(),
+    animation: "hipHop",
+    featuredAnimation: "gangnam",
+    alternateAnimation: "dance",
     position: [-0.85, -0.96, 1.9],
     rotation: 0.12,
     tint: "#b8ddff",
@@ -58,7 +59,9 @@ const crowd = [
   },
   {
     model: "female",
-    animation: randomSupportingDance(),
+    animation: "silly",
+    featuredAnimation: "ymca",
+    alternateAnimation: "samba",
     position: [0.9, -0.96, 1.75],
     rotation: -0.08,
     tint: "#d9b9ff",
@@ -67,7 +70,9 @@ const crowd = [
   },
   {
     model: "male",
-    animation: randomSupportingDance(),
+    animation: "gangnam",
+    featuredAnimation: "hipHop2",
+    alternateAnimation: "hipHop",
     position: [2.35, -0.96, 1.2],
     rotation: 0.2,
     tint: "#ffd3a6",
@@ -76,7 +81,9 @@ const crowd = [
   },
   {
     model: "male",
-    animation: randomSupportingDance(),
+    animation: "dance",
+    featuredAnimation: "silly",
+    alternateAnimation: "ymca",
     position: [-1.65, -0.96, -0.8],
     rotation: -0.28,
     tint: "#9deee5",
@@ -85,7 +92,9 @@ const crowd = [
   },
   {
     model: "female",
-    animation: randomSupportingDance(),
+    animation: "ymca",
+    featuredAnimation: "samba",
+    alternateAnimation: "hipHop2",
     position: [0, -0.96, -1.15],
     rotation: 0.14,
     tint: "#ffb3c4",
@@ -94,7 +103,9 @@ const crowd = [
   },
   {
     model: "male",
-    animation: randomSupportingDance(),
+    animation: "hipHop2",
+    featuredAnimation: "gangnam",
+    alternateAnimation: "silly",
     position: [1.75, -0.96, -0.7],
     rotation: 0.3,
     tint: "#c4ccff",
@@ -104,6 +115,8 @@ const crowd = [
   {
     model: "female",
     animation: "twerk",
+    featuredAnimation: "hipHop",
+    alternateAnimation: "samba",
     position: [-2.75, -1.03, 0.08],
     rotation: 0.34,
     tint: "#ff9bc9",
@@ -112,7 +125,9 @@ const crowd = [
   },
   {
     model: "male",
-    animation: randomSupportingDance(),
+    animation: "samba",
+    featuredAnimation: "dance",
+    alternateAnimation: "gangnam",
     position: [2.78, -0.96, 0.02],
     rotation: -0.32,
     tint: "#92e8ff",
@@ -181,7 +196,14 @@ const createCrowdDirector = () => ({
 function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   const sourceModel = useLoader(FBXLoader, models[dancer.model]);
   const sourceAnimation = useLoader(FBXLoader, animations[dancer.animation]);
-  const sourceFeaturedAnimation = useLoader(FBXLoader, animations.hipHop2);
+  const sourceFeaturedAnimation = useLoader(
+    FBXLoader,
+    animations[dancer.featuredAnimation]
+  );
+  const sourceAlternateAnimation = useLoader(
+    FBXLoader,
+    animations[dancer.alternateAnimation]
+  );
   const sourceAggressiveAnimation = useLoader(
     FBXLoader,
     animations[
@@ -195,13 +217,14 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   const activeMode = useRef(null);
   const activeAction = useRef(null);
   const activeDanceVariant = useRef(
-    Math.random() < 0.62 ? "featuredDance" : "dance"
+    danceVariants[index % danceVariants.length]
   );
   const nextDanceVariantAt = useRef(6 + ((index * 2.73) % 7));
   const lastDancePhrase = useRef(-1);
   const idleVariant = useRef(Math.random() < 0.5 ? 0 : 1);
   const smoothedDanceRate = useRef(1);
   const smoothedFeaturedDanceRate = useRef(1);
+  const smoothedAlternateDanceRate = useRef(1);
   const smoothedAggressiveRate = useRef(1);
   const lastSeekVersion = useRef(audioBus.seekVersion);
 
@@ -245,6 +268,10 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
     () => makeInPlace(sourceFeaturedAnimation.animations[0]),
     [sourceFeaturedAnimation]
   );
+  const alternateDanceClip = useMemo(
+    () => makeInPlace(sourceAlternateAnimation.animations[0]),
+    [sourceAlternateAnimation]
+  );
   const aggressiveClip = useMemo(
     () => makeInPlace(sourceAggressiveAnimation.animations[0]),
     [sourceAggressiveAnimation]
@@ -261,6 +288,7 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   useEffect(() => {
     const danceAction = mixer.clipAction(danceClip);
     const featuredDanceAction = mixer.clipAction(featuredDanceClip);
+    const alternateDanceAction = mixer.clipAction(alternateDanceClip);
     const aggressiveAction = mixer.clipAction(aggressiveClip);
     const idleActions = idleClips.map((idleClip) => mixer.clipAction(idleClip));
     const chosenIdleAction = idleActions[idleVariant.current];
@@ -269,6 +297,7 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
     [
       danceAction,
       featuredDanceAction,
+      alternateDanceAction,
       aggressiveAction,
       ...idleActions,
     ].forEach((action) => {
@@ -282,11 +311,15 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
     const initialDanceAction =
       activeDanceVariant.current === "featuredDance"
         ? featuredDanceAction
-        : danceAction;
+        : activeDanceVariant.current === "alternateDance"
+          ? alternateDanceAction
+          : danceAction;
     const initialDanceClip =
       activeDanceVariant.current === "featuredDance"
         ? featuredDanceClip
-        : danceClip;
+        : activeDanceVariant.current === "alternateDance"
+          ? alternateDanceClip
+          : danceClip;
     const initialAction = startsDancing ? initialDanceAction : chosenIdleAction;
     initialAction.reset();
     initialAction.time = startsDancing
@@ -300,6 +333,8 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       danceClip,
       featuredDance: featuredDanceAction,
       featuredDanceClip,
+      alternateDance: alternateDanceAction,
+      alternateDanceClip,
       aggressive: aggressiveAction,
       aggressiveClip,
       idle: chosenIdleAction,
@@ -318,6 +353,7 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   }, [
     audioBus,
     aggressiveClip,
+    alternateDanceClip,
     character,
     crowdDirector,
     danceClip,
@@ -368,6 +404,11 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       animationBpm,
       preferredDanceRate
     );
+    const alternateDanceRate = getBeatAlignedRate(
+      dancerActions.alternateDanceClip.duration,
+      animationBpm,
+      preferredDanceRate
+    );
     const aggressiveBpm = animationBpm;
     const aggressiveTempoRatio = THREE.MathUtils.clamp(
       (aggressiveBpm || 110) / 100,
@@ -405,6 +446,11 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       lowPower ? 0.72 : 1.02,
       lowPower ? 1.52 : 2.02
     );
+    const targetAlternateDanceRate = THREE.MathUtils.clamp(
+      alternateDanceRate * (1 + trackDrive + percussionDrive),
+      lowPower ? 0.72 : 1.02,
+      lowPower ? 1.52 : 2.02
+    );
     const targetAggressiveRate = THREE.MathUtils.clamp(
       aggressiveRate * (1 + trackDrive * 0.58 + percussionDrive * 0.42),
       lowPower ? 0.76 : 1.04,
@@ -423,6 +469,12 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       targetFeaturedDanceRate > smoothedFeaturedDanceRate.current ? 16 : 7,
       delta
     );
+    smoothedAlternateDanceRate.current = THREE.MathUtils.damp(
+      smoothedAlternateDanceRate.current,
+      targetAlternateDanceRate,
+      targetAlternateDanceRate > smoothedAlternateDanceRate.current ? 16 : 7,
+      delta
+    );
     smoothedAggressiveRate.current = THREE.MathUtils.damp(
       smoothedAggressiveRate.current,
       targetAggressiveRate,
@@ -435,6 +487,9 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
     );
     dancerActions.featuredDance.setEffectiveTimeScale(
       smoothedFeaturedDanceRate.current
+    );
+    dancerActions.alternateDance.setEffectiveTimeScale(
+      smoothedAlternateDanceRate.current
     );
     dancerActions.aggressive.setEffectiveTimeScale(
       smoothedAggressiveRate.current
@@ -450,6 +505,10 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
         (audioBus.position * featuredDanceRate +
           dancerActions.featuredDanceClip.duration * dancer.offset) %
         dancerActions.featuredDanceClip.duration;
+      dancerActions.alternateDance.time =
+        (audioBus.position * alternateDanceRate +
+          dancerActions.alternateDanceClip.duration * dancer.offset) %
+        dancerActions.alternateDanceClip.duration;
       const aggressiveOffset = ((index % 3) - 1) * 0.012;
       dancerActions.aggressive.time =
         (audioBus.position * aggressiveRate +
@@ -470,10 +529,18 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       nextAction.reset();
       if (nextMode === "dance") {
         const enteringFeatured = activeDanceVariant.current === "featuredDance";
+        const enteringAlternate =
+          activeDanceVariant.current === "alternateDance";
         const enteringClip = enteringFeatured
           ? dancerActions.featuredDanceClip
-          : dancerActions.danceClip;
-        const enteringRate = enteringFeatured ? featuredDanceRate : danceRate;
+          : enteringAlternate
+            ? dancerActions.alternateDanceClip
+            : dancerActions.danceClip;
+        const enteringRate = enteringFeatured
+          ? featuredDanceRate
+          : enteringAlternate
+            ? alternateDanceRate
+            : danceRate;
         nextAction.time =
           (audioBus.position * enteringRate +
             enteringClip.duration * dancer.offset) %
@@ -516,17 +583,24 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
       state.clock.elapsedTime >= nextDanceVariantAt.current &&
       dancePhrase !== lastDancePhrase.current;
     if (canChangeDance) {
-      const nextVariant =
-        activeDanceVariant.current === "featuredDance"
-          ? "dance"
-          : "featuredDance";
+      let nextVariantIndex = (dancePhrase + index * 2) % danceVariants.length;
+      if (danceVariants[nextVariantIndex] === activeDanceVariant.current) {
+        nextVariantIndex = (nextVariantIndex + 1) % danceVariants.length;
+      }
+      const nextVariant = danceVariants[nextVariantIndex];
       const nextAction = dancerActions[nextVariant];
       const nextClip =
         nextVariant === "featuredDance"
           ? dancerActions.featuredDanceClip
-          : dancerActions.danceClip;
+          : nextVariant === "alternateDance"
+            ? dancerActions.alternateDanceClip
+            : dancerActions.danceClip;
       const nextRate =
-        nextVariant === "featuredDance" ? featuredDanceRate : danceRate;
+        nextVariant === "featuredDance"
+          ? featuredDanceRate
+          : nextVariant === "alternateDance"
+            ? alternateDanceRate
+            : danceRate;
       nextAction.enabled = true;
       nextAction.setEffectiveWeight(1);
       nextAction.reset();
@@ -615,40 +689,10 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   );
 }
 
-function CrowdContactShadows({ dancers }) {
-  const shadows = useRef(null);
-
-  useLayoutEffect(() => {
-    if (!shadows.current) return;
-
-    const transform = new THREE.Object3D();
-    dancers.forEach((dancer, index) => {
-      transform.position.set(dancer.position[0], -0.969, dancer.position[2]);
-      transform.rotation.set(-Math.PI / 2, 0, dancer.rotation);
-      transform.scale.set(0.48, 0.78, 1);
-      transform.updateMatrix();
-      shadows.current.setMatrixAt(index, transform.matrix);
-    });
-    shadows.current.instanceMatrix.needsUpdate = true;
-  }, [dancers]);
-
-  return (
-    <instancedMesh ref={shadows} args={[null, null, dancers.length]}>
-      <circleGeometry args={[0.55, 20]} />
-      <meshBasicMaterial
-        color="#000000"
-        transparent
-        opacity={0.24}
-        depthWrite={false}
-      />
-    </instancedMesh>
-  );
-}
-
 export function ClubDJ({ audioBus, lowPower = false }) {
   const sourceModel = useLoader(FBXLoader, models.male);
   const sourceIdle = useLoader(FBXLoader, animations.happyIdle);
-  const sourcePerformance = useLoader(FBXLoader, animations.djDance);
+  const sourcePerformance = useLoader(FBXLoader, animations.ymca);
   const group = useRef(null);
   const actions = useRef(null);
   const activeMode = useRef("idle");
@@ -1013,7 +1057,6 @@ export function DanceCrowd({ audioBus, lowPower = false }) {
 
   return (
     <group>
-      <CrowdContactShadows dancers={visibleCrowd} />
       {visibleCrowd.map((dancer) => {
         const index = crowd.indexOf(dancer);
 
