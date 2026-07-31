@@ -924,8 +924,8 @@ function SceneThree({
   );
 }
 
-function Controls({ audioBus, lowPower = false }) {
-  const { gl, camera } = useThree();
+function Controls({ audioBus, lowPower = false, mobileView = false }) {
+  const { gl, camera, size } = useThree();
   const controls = useRef(null);
   const desiredTarget = useMemo(() => new THREE.Vector3(), []);
 
@@ -934,10 +934,15 @@ function Controls({ audioBus, lowPower = false }) {
 
     const active = audioBus.isPlaying && (audioBus.loudness || 0) > 0.04;
     const time = state.clock.elapsedTime;
+    const portrait = mobileView && size.height > size.width * 1.05;
+    const mobileTargetY = portrait ? 1.12 : 0.92;
+    const mobileTargetZ = portrait ? -0.18 : 0.08;
     desiredTarget.set(
       active ? Math.sin(time * 0.11) * 0.11 : 0,
-      0.75 + (active ? audioBus.body * 0.07 : 0),
-      0.35 + (active ? Math.cos(time * 0.085) * 0.12 : 0)
+      (mobileView ? mobileTargetY : 0.75) +
+        (active ? audioBus.body * 0.07 : 0),
+      (mobileView ? mobileTargetZ : 0.35) +
+        (active ? Math.cos(time * 0.085) * 0.12 : 0)
     );
     controls.current.target.lerp(
       desiredTarget,
@@ -945,12 +950,21 @@ function Controls({ audioBus, lowPower = false }) {
     );
     controls.current.autoRotateSpeed = THREE.MathUtils.damp(
       controls.current.autoRotateSpeed,
-      active ? 0.3 + audioBus.presence * 0.06 : 0.11,
+      mobileView
+        ? active
+          ? 0.13 + audioBus.presence * 0.035
+          : 0.055
+        : active
+          ? 0.3 + audioBus.presence * 0.06
+          : 0.11,
       1.2,
       delta
     );
 
-    const targetFov = 48 - (active && !lowPower ? audioBus.body * 0.38 : 0);
+    const mobileFov = portrait ? 68 : size.width / size.height < 1.25 ? 59 : 54;
+    const targetFov = mobileView
+      ? mobileFov
+      : 48 - (active && !lowPower ? audioBus.body * 0.38 : 0);
     const nextFov = THREE.MathUtils.damp(camera.fov, targetFov, 3.2, delta);
     if (Math.abs(nextFov - camera.fov) > 0.001) {
       camera.fov = nextFov;
@@ -962,13 +976,17 @@ function Controls({ audioBus, lowPower = false }) {
     <OrbitControls
       ref={controls}
       autoRotate
-      autoRotateSpeed={0.24}
+      autoRotateSpeed={mobileView ? 0.1 : 0.24}
       enableDamping
-      dampingFactor={0.055}
-      target={[0, 0.75, 0.35]}
+      dampingFactor={mobileView ? 0.075 : 0.055}
+      target={mobileView ? [0, 1.12, -0.18] : [0, 0.75, 0.35]}
       enablePan={false}
-      minDistance={5.8}
-      maxDistance={10.5}
+      minDistance={mobileView ? 7.2 : 5.8}
+      maxDistance={mobileView ? 18 : 10.5}
+      minPolarAngle={mobileView ? Math.PI * 0.24 : 0}
+      maxPolarAngle={mobileView ? Math.PI * 0.62 : Math.PI}
+      rotateSpeed={mobileView ? 0.48 : 1}
+      zoomSpeed={mobileView ? 0.72 : 1}
       args={[camera, gl.domElement]}
     />
   );
@@ -1096,11 +1114,13 @@ function App() {
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
     const cpuCores = navigator.hardwareConcurrency || 8;
     const deviceMemory = navigator.deviceMemory || 8;
+    const mobileView = compactViewport || coarsePointer;
     const lowPower =
-      compactViewport || coarsePointer || cpuCores <= 4 || deviceMemory <= 4;
+      mobileView || cpuCores <= 4 || deviceMemory <= 4;
 
     return {
       lowPower,
+      mobileView,
       dpr: lowPower ? [0.7, 0.9] : [0.9, 1.1],
     };
   });
@@ -1197,13 +1217,24 @@ function App() {
       <Canvas
         shadows={false}
         dpr={renderProfile.dpr}
-        camera={{ position: [0, 1.55, 7.4], fov: 48, near: 0.1, far: 50 }}
+        camera={{
+          position: renderProfile.mobileView
+            ? [0, 2.2, 11.4]
+            : [0, 1.55, 7.4],
+          fov: renderProfile.mobileView ? 68 : 48,
+          near: 0.1,
+          far: 55,
+        }}
         gl={{
           antialias: !renderProfile.lowPower,
           powerPreference: renderProfile.lowPower ? "low-power" : "default",
         }}
       >
-        <Controls audioBus={audioBus} lowPower={renderProfile.lowPower} />
+        <Controls
+          audioBus={audioBus}
+          lowPower={renderProfile.lowPower}
+          mobileView={renderProfile.mobileView}
+        />
         <color attach="background" args={["#09090d"]} />
         <fog attach="fog" args={["#09090d", 6, 19]} />
         <SceneThree
