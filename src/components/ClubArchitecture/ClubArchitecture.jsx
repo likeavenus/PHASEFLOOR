@@ -582,7 +582,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
         })}
       </group>
 
-      <group position={[0, -0.36, -3.2]}>
+      <group position={[0, -0.91, -2.95]}>
         <mesh
           geometry={djBoothGeometry}
           position={[0, 0.56, 0]}
@@ -615,7 +615,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
         </mesh>
 
         {[-1, 1].map((side, deckIndex) => (
-          <group key={`dj-deck-${side}`} position={[side * 1.34, 1.24, 0.08]}>
+          <group key={`dj-deck-${side}`} position={[side * 1.34, 1.24, -0.22]}>
             <mesh castShadow={!lowPower}>
               <boxGeometry args={[1.15, 0.09, 0.72]} />
               <meshStandardMaterial
@@ -669,7 +669,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
           </group>
         ))}
 
-        <group position={[0, 1.245, 0.08]}>
+        <group position={[0, 1.245, -0.2]}>
           <mesh castShadow={!lowPower}>
             <boxGeometry args={[0.9, 0.1, 0.74]} />
             <meshStandardMaterial
@@ -715,7 +715,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
           return (
             <mesh
               key={`dj-pad-${index}`}
-              position={[-0.27 + column * 0.18, 1.325, -0.12 + row * 0.19]}
+              position={[-0.27 + column * 0.18, 1.325, -0.34 + row * 0.16]}
             >
               <boxGeometry args={[0.12, 0.025, 0.12]} />
               <meshStandardMaterial
@@ -740,8 +740,9 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
           />
         </mesh>
         <group
-          position={[0, 1.66, -0.44]}
-          rotation={[-0.08, Math.PI, 0]}
+          position={[0.92, 1.56, -0.45]}
+          rotation={[-0.08, -2.05, 0]}
+          scale={0.78}
         >
           <mesh castShadow={!lowPower}>
             <boxGeometry args={[1.18, 0.68, 0.055]} />

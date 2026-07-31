@@ -638,7 +638,7 @@ export function ClubDJ({ audioBus }) {
   });
 
   return (
-    <group ref={group} position={[0, -0.96, -3.72]} rotation-y={0.04}>
+    <group ref={group} position={[0, -0.96, -3.85]} rotation-y={0.04}>
       <primitive object={character} scale={0.0115} />
     </group>
   );
