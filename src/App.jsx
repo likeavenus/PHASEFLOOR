@@ -1115,13 +1115,22 @@ function App() {
     const cpuCores = navigator.hardwareConcurrency || 8;
     const deviceMemory = navigator.deviceMemory || 8;
     const mobileView = compactViewport || coarsePointer;
+    const highEndMobile =
+      mobileView && cpuCores >= 6 && deviceMemory >= 4;
     const lowPower =
       mobileView || cpuCores <= 4 || deviceMemory <= 4;
 
     return {
       lowPower,
       mobileView,
-      dpr: lowPower ? [0.7, 0.9] : [0.9, 1.1],
+      highEndMobile,
+      dpr: mobileView
+        ? highEndMobile
+          ? [1, 1.25]
+          : [0.88, 1.05]
+        : lowPower
+          ? [0.75, 0.95]
+          : [0.9, 1.1],
     };
   });
   const [isStarted, setStarted] = useState(() =>
@@ -1226,8 +1235,13 @@ function App() {
           far: 55,
         }}
         gl={{
-          antialias: !renderProfile.lowPower,
-          powerPreference: renderProfile.lowPower ? "low-power" : "default",
+          antialias:
+            renderProfile.mobileView || !renderProfile.lowPower,
+          powerPreference: renderProfile.highEndMobile
+            ? "default"
+            : renderProfile.lowPower
+              ? "low-power"
+              : "default",
         }}
       >
         <Controls

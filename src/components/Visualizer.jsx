@@ -729,7 +729,7 @@ export const AudioVisualizer = ({
           <div className="audio-status">{status}</div>
         </Html>
       )}
-      <Sphere ref={sphereRef} args={[1, 64, 64]} position={[0, 2, 0]}>
+      <Sphere ref={sphereRef} args={[1, 64, 64]} position={[0, 2.52, 0]}>
         <pointLight
           ref={lightRef}
           castShadow
