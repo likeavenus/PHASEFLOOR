@@ -99,7 +99,7 @@ const crowd = [
   {
     model: "female",
     animation: "twerk",
-    position: [-2.75, -0.96, 0.08],
+    position: [-2.75, -1.03, 0.08],
     rotation: 0.34,
     tint: "#ff9bc9",
     speed: 1.02,

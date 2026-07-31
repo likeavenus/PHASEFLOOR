@@ -83,6 +83,37 @@ const mobileBeamFragmentShader = /* glsl */ `
   }
 `;
 
+const lightPoolVertexShader = /* glsl */ `
+  varying vec2 vPoolUv;
+
+  void main() {
+    vPoolUv = uv * 2.0 - 1.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const lightPoolFragmentShader = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+
+  varying vec2 vPoolUv;
+
+  void main() {
+    float radius = length(vPoolUv);
+    float softCore = 1.0 - smoothstep(0.08, 0.82, radius);
+    float outerGlow = 1.0 - smoothstep(0.5, 1.0, radius);
+    float goboRing = 1.0 - smoothstep(0.035, 0.11, abs(radius - 0.56));
+    float rays = 0.78 + 0.22 * cos(atan(vPoolUv.y, vPoolUv.x) * 8.0);
+    float alpha =
+      (softCore * 0.32 + outerGlow * 0.16 + goboRing * rays * 0.7) *
+      uOpacity;
+
+    if (alpha < 0.002 || radius > 1.0) discard;
+    vec3 color = uColor * (1.35 + softCore * 1.5 + goboRing * 0.7);
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
 function MovingSpot({
   audioBus,
   fixture = 0,
@@ -105,6 +136,13 @@ function MovingSpot({
   const beamAxis = useMemo(() => new THREE.Vector3(0, -1, 0), []);
   const fixtureAim = useMemo(() => new THREE.Object3D(), []);
   const mobileBeamUniforms = useMemo(
+    () => ({
+      uColor: { value: new THREE.Color(props.color || "white") },
+      uOpacity: { value: 0 },
+    }),
+    [props.color]
+  );
+  const lightPoolUniforms = useMemo(
     () => ({
       uColor: { value: new THREE.Color(props.color || "white") },
       uOpacity: { value: 0 },
@@ -246,13 +284,15 @@ function MovingSpot({
       lightPool.current.position.set(beamEnd.x, -0.964, beamEnd.z);
       const poolScale = 0.7 + Math.abs(beamEnd.y + 0.7) * 0.18;
       lightPool.current.scale.setScalar(poolScale);
-      lightPool.current.material.opacity = THREE.MathUtils.damp(
-        lightPool.current.material.opacity,
-        Math.min(0.22, desiredOpacity * 0.52),
+      const opacityUniform =
+        lightPool.current.material.uniforms.uOpacity;
+      opacityUniform.value = THREE.MathUtils.damp(
+        opacityUniform.value,
+        Math.min(0.34, desiredOpacity * 0.82),
         8,
         delta
       );
-      lightPool.current.visible = lightPool.current.material.opacity > 0.004;
+      lightPool.current.visible = opacityUniform.value > 0.004;
     }
   });
 
@@ -281,24 +321,23 @@ function MovingSpot({
           <meshBasicMaterial color={props.color} toneMapped={false} />
         </mesh>
       </group>
-      {!lowPower && (
-        <mesh
-          ref={lightPool}
-          rotation-x={-Math.PI / 2}
-          renderOrder={1}
-          raycast={() => null}
-        >
-          <ringGeometry args={[0.28, 0.7, 28]} />
-          <meshBasicMaterial
-            color={props.color}
-            transparent
-            opacity={0}
-            depthWrite={false}
-            blending={THREE.AdditiveBlending}
-            toneMapped={false}
-          />
-        </mesh>
-      )}
+      <mesh
+        ref={lightPool}
+        rotation-x={-Math.PI / 2}
+        renderOrder={1}
+        raycast={() => null}
+      >
+        <circleGeometry args={[0.78, lowPower ? 20 : 28]} />
+        <shaderMaterial
+          uniforms={lightPoolUniforms}
+          vertexShader={lightPoolVertexShader}
+          fragmentShader={lightPoolFragmentShader}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
       {lowPower && (
         <mesh
           ref={mobileBeam}

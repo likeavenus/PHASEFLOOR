@@ -739,7 +739,10 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
             roughness={0.28}
           />
         </mesh>
-        <group position={[0, 1.66, -0.44]} rotation-x={-0.08}>
+        <group
+          position={[0, 1.66, -0.44]}
+          rotation={[-0.08, Math.PI, 0]}
+        >
           <mesh castShadow={!lowPower}>
             <boxGeometry args={[1.18, 0.68, 0.055]} />
             <meshStandardMaterial
