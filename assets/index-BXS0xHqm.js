@@ -4817,7 +4817,7 @@ void main () {\r
     float body = clamp(uBands.y, 0.0, 1.0);
     float presence = clamp(uBands.z, 0.0, 1.0);
     float high = clamp(max(uBands.w, uHits.z), 0.0, 1.0);
-    float active = mix(0.22, 1.0, uPlaying);
+    float playLevel = mix(0.22, 1.0, uPlaying);
     float time = uTime;
 
     // Work in facade proportions so waves remain round rather than stretched.
@@ -4879,12 +4879,12 @@ void main () {\r
     vec3 ribbonColor = mix(cyan, magenta, clamp(vUv.x * 0.72 + noiseB * 0.34, 0.0, 1.0));
     ribbonColor = mix(ribbonColor, violet, ribbonsB * 0.24);
 
-    float background = (0.085 + plasma * 0.22 + filaments * 0.11) * active;
+    float background = (0.085 + plasma * 0.22 + filaments * 0.11) * playLevel;
     vec3 color = fieldColor * background;
-    color += ribbonColor * ribbons * (0.72 + body * 0.38) * active;
+    color += ribbonColor * ribbons * (0.72 + body * 0.38) * playLevel;
     color += mix(cyan, magenta, noiseA) * kickWave * (1.3 + bass * 0.75);
     color += mix(magenta, vec3(1.15, 0.72, 1.0), noiseB) * clapFlash * (0.68 + presence * 0.42);
-    color += mix(cyan, amber, high) * sparks * active;
+    color += mix(cyan, amber, high) * sparks * playLevel;
     color += amber * kickWave * high * 0.24;
 
     float edge =
@@ -4893,11 +4893,11 @@ void main () {\r
       smoothstep(0.0, 0.09, vUv.y) *
       (1.0 - smoothstep(0.91, 1.0, vUv.y));
     float lightEnergy = clamp(
-      0.08 * active + background + ribbons * 0.62 + kickWave * 0.86 + clapFlash * 0.42 + sparks * 0.56,
+      0.08 * playLevel + background + ribbons * 0.62 + kickWave * 0.86 + clapFlash * 0.42 + sparks * 0.56,
       0.0,
       1.0
     ) * edge;
-    vec3 screenBlack = vec3(0.003, 0.006, 0.018) * (0.72 + active * 0.28);
+    vec3 screenBlack = vec3(0.003, 0.006, 0.018) * (0.72 + playLevel * 0.28);
     vec3 displayColor = mix(screenBlack, color, clamp(edge * (0.72 + lightEnergy), 0.0, 1.0));
     gl_FragColor = vec4(displayColor, 1.0);
   }
