@@ -323,13 +323,14 @@ const djFacadeFragmentShader = /* glsl */ `
       (1.0 - smoothstep(0.965, 1.0, vUv.x)) *
       smoothstep(0.0, 0.09, vUv.y) *
       (1.0 - smoothstep(0.91, 1.0, vUv.y));
-    float alpha = clamp(
+    float lightEnergy = clamp(
       0.08 * active + background + ribbons * 0.62 + kickWave * 0.86 + clapFlash * 0.42 + sparks * 0.56,
       0.0,
       1.0
     ) * edge;
-    if (alpha < 0.004) discard;
-    gl_FragColor = vec4(color, alpha);
+    vec3 screenBlack = vec3(0.003, 0.006, 0.018) * (0.72 + active * 0.28);
+    vec3 displayColor = mix(screenBlack, color, clamp(edge * (0.72 + lightEnergy), 0.0, 1.0));
+    gl_FragColor = vec4(displayColor, 1.0);
   }
 `;
 
@@ -416,16 +417,17 @@ function DjFacadeGenerativeDisplay({ audioBus, lowPower }) {
   });
 
   return (
-    <mesh position={[0, 0.58, 0.461]} renderOrder={3}>
+    <mesh position={[0, 0.58, 0.48]} renderOrder={3}>
       <planeGeometry args={[3.52, 0.62]} />
       <shaderMaterial
         uniforms={uniforms}
         defines={lowPower ? { LOW_POWER: 1 } : {}}
         vertexShader={spectrumVertexShader}
         fragmentShader={djFacadeFragmentShader}
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
+        depthWrite
+        polygonOffset
+        polygonOffsetFactor={-1}
+        polygonOffsetUnits={-2}
         toneMapped={false}
       />
     </mesh>
