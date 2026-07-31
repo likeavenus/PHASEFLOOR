@@ -6,5 +6,5 @@ import glsl from "vite-plugin-glsl";
 export default defineConfig({
   plugins: [react(), glsl()],
   assetsInclude: ["**/*.mp3", "**/*.gltf"],
-  base: "/phasefloor/",
+  base: "/PHASEFLOOR/",
 });

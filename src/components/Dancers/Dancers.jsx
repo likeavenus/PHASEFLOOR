@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 
+const CHARACTER_ASSET_VERSION = "phasefloor-20260731";
 const characterUrl = (filename) =>
-  `${import.meta.env.BASE_URL}models/characters/${encodeURIComponent(filename)}`;
+  `${import.meta.env.BASE_URL}models/characters/${encodeURIComponent(filename)}?v=${CHARACTER_ASSET_VERSION}`;
 
 const models = {
   male: characterUrl("X Bot.fbx"),
