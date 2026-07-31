@@ -104,20 +104,57 @@ button {
   gap: 3px;
 }
 
-.music-dock__name,
+.music-dock__track-select,
 .music-dock__meta,
 .music-dock__upload {
   letter-spacing: 0.13em;
   text-transform: uppercase;
 }
 
-.music-dock__name {
+.music-dock__selector {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.music-dock__track-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 1px 18px 1px 0;
   overflow: hidden;
+  border: 0;
+  outline: 0;
   color: rgba(255, 255, 255, 0.88);
+  background-color: transparent;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(117, 214, 255, 0.86) 50%),
+    linear-gradient(135deg, rgba(117, 214, 255, 0.86) 50%, transparent 50%);
+  background-position:
+    calc(100% - 7px) 48%,
+    calc(100% - 3px) 48%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px, 4px 4px;
+  cursor: pointer;
   font-size: 10px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+  appearance: none;
+}
+
+.music-dock__track-select option {
+  color: #f2edf9;
+  background: #11111a;
+}
+
+.music-dock__track-select:hover {
+  color: #fff;
+}
+
+.music-dock__track-select:focus-visible {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(104, 215, 255, 0.72);
 }
 
 .music-dock__meta {

@@ -23,7 +23,38 @@ import { ClubArchitecture } from "./components/ClubArchitecture/ClubArchitecture
 import { ClubSmoke } from "./components/ClubSmoke/ClubSmoke";
 import { CreatorLinks } from "./components/CreatorLinks/CreatorLinks";
 import { TV } from "./components/TV/TV";
-import defaultTrack from "/music/lostvpe-mentalmane-cryangel.mp3";
+import musicFiles from "virtual:music-library";
+
+const DEFAULT_TRACK_FILE = "lostvpe-mentalmane-cryangel.mp3";
+const cleanLibraryLabel = (filename) =>
+  filename
+    .replace(/\.[a-z0-9]{1,8}$/i, "")
+    .replace(/_+[-–—]_+/g, " — ")
+    .replace(/_+/g, " ")
+    .replace(/\s+[-–—]\s+/g, " — ")
+    .replace(/\s+/g, " ")
+    .trim();
+const publicMusicPath = (filename) =>
+  `${import.meta.env.BASE_URL}music/${encodeURIComponent(filename)}`;
+const libraryTracks = musicFiles.map((filename) => ({
+  id: `library:${filename}`,
+  path: publicMusicPath(filename),
+  name: filename,
+  label:
+    filename === DEFAULT_TRACK_FILE
+      ? "LOSTVPE Mentalmane — cryangel"
+      : cleanLibraryLabel(filename),
+  source: "library",
+}));
+const defaultTrack =
+  libraryTracks.find((entry) => entry.name === DEFAULT_TRACK_FILE) ||
+  libraryTracks[0] || {
+    id: `library:${DEFAULT_TRACK_FILE}`,
+    path: publicMusicPath(DEFAULT_TRACK_FILE),
+    name: DEFAULT_TRACK_FILE,
+    label: "LOSTVPE Mentalmane — cryangel",
+    source: "library",
+  };
 
 const concertLights = [
   { position: [-4.1, 4.2, 2.7], color: "#20c8ff", phase: 0 },
@@ -1142,10 +1173,7 @@ function App() {
   const [musicPlaying, setMusicPlaying] = useState(() =>
     new URLSearchParams(window.location.search).has("autostart")
   );
-  const [track, setTrack] = useState(() => ({
-    path: defaultTrack,
-    name: "LOSTVPE Mentalmane - cryangel.mp3",
-  }));
+  const [track, setTrack] = useState(() => defaultTrack);
   const [audioInfo, setAudioInfo] = useState(null);
   const [tempoBpm, setTempoBpm] = useState(null);
   const { progress } = useProgress();
@@ -1206,8 +1234,29 @@ function App() {
     setAudioInfo(null);
     setTempoBpm(null);
     setMusicPlaying(true);
-    setTrack({ path: file, name: file.name });
+    setTrack({
+      id: `upload:${file.name}:${file.size}:${file.lastModified}`,
+      path: file,
+      name: file.name,
+      label: cleanLibraryLabel(file.name),
+      source: "upload",
+    });
   }, []);
+
+  const handleLibraryTrackChange = useCallback(
+    (event) => {
+      const nextTrack = libraryTracks.find(
+        (entry) => entry.id === event.currentTarget.value
+      );
+      if (!nextTrack || nextTrack.id === track.id) return;
+
+      setAudioInfo(null);
+      setTempoBpm(null);
+      setMusicPlaying(true);
+      setTrack(nextTrack);
+    },
+    [track.id]
+  );
 
   const handleStart = () => {
     setMusicPlaying(true);
@@ -1277,9 +1326,23 @@ function App() {
             {musicPlaying ? "Ⅱ" : "▶"}
           </button>
           <div className="music-dock__track">
-            <span className="music-dock__name" title={track.name}>
-              {track.name}
-            </span>
+            <label className="music-dock__selector" title={track.name}>
+              <select
+                className="music-dock__track-select"
+                value={track.id}
+                onChange={handleLibraryTrackChange}
+                aria-label="Select track"
+              >
+                {track.source === "upload" && (
+                  <option value={track.id}>CUSTOM · {track.label}</option>
+                )}
+                {libraryTracks.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span className="music-dock__meta-row">
               <span className="music-dock__meta">{trackStatus}</span>
               {nextTempo && (
