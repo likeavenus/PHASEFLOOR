@@ -27,5 +27,5 @@ npm run build
   musical tempo with a high-BPM half-time guard.
 - Absolute RMS loudness keeps the crowd idle during silent intros.
 
-The default track is `public/music/limbo-sliuce-eligibility.mp3`. Uploaded tracks stay
+The default track is `public/music/lostvpe-mentalmane-cryangel.mp3`. Uploaded tracks stay
 local to the browser.

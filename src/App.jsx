@@ -23,7 +23,7 @@ import { ClubArchitecture } from "./components/ClubArchitecture/ClubArchitecture
 import { ClubSmoke } from "./components/ClubSmoke/ClubSmoke";
 import { CreatorLinks } from "./components/CreatorLinks/CreatorLinks";
 import { TV } from "./components/TV/TV";
-import defaultTrack from "/music/limbo-sliuce-eligibility.mp3";
+import defaultTrack from "/music/lostvpe-mentalmane-cryangel.mp3";
 
 const concertLights = [
   { position: [-4.1, 4.2, 2.7], color: "#20c8ff", phase: 0 },
@@ -946,7 +946,7 @@ function App() {
   );
   const [track, setTrack] = useState(() => ({
     path: defaultTrack,
-    name: "Limbo Sliuce - Eligibility.mp3",
+    name: "LOSTVPE Mentalmane - cryangel.mp3",
   }));
   const [audioInfo, setAudioInfo] = useState(null);
   const [tempoBpm, setTempoBpm] = useState(null);
