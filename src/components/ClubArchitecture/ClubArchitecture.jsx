@@ -197,6 +197,162 @@ const spectrumFragmentShader = /* glsl */ `
   }
 `;
 
+const djFacadeFragmentShader = /* glsl */ `
+  uniform vec4 uBands;
+  uniform vec3 uHits;
+  uniform float uTime;
+  uniform float uPlaying;
+
+  varying vec2 vUv;
+
+  vec2 gradientDirection(vec2 point) {
+    float angle = fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
+    angle *= 6.2831853;
+    return vec2(cos(angle), sin(angle));
+  }
+
+  float perlinNoise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 local = fract(point);
+    vec2 fade = local * local * local * (local * (local * 6.0 - 15.0) + 10.0);
+    float n00 = dot(gradientDirection(cell), local);
+    float n10 = dot(gradientDirection(cell + vec2(1.0, 0.0)), local - vec2(1.0, 0.0));
+    float n01 = dot(gradientDirection(cell + vec2(0.0, 1.0)), local - vec2(0.0, 1.0));
+    float n11 = dot(gradientDirection(cell + vec2(1.0)), local - vec2(1.0));
+    return mix(mix(n00, n10, fade.x), mix(n01, n11, fade.x), fade.y) * 0.5 + 0.5;
+  }
+
+  float fbm(vec2 point) {
+    float value = 0.0;
+    float amplitude = 0.55;
+    value += perlinNoise(point) * amplitude;
+    point = point * 2.03 + vec2(17.3, 9.2);
+    amplitude *= 0.5;
+    value += perlinNoise(point) * amplitude;
+#ifndef LOW_POWER
+    point = point * 2.01 + vec2(5.7, 21.4);
+    amplitude *= 0.5;
+    value += perlinNoise(point) * amplitude;
+    point = point * 1.97 + vec2(31.2, 4.8);
+    amplitude *= 0.5;
+    value += perlinNoise(point) * amplitude;
+#endif
+    return value;
+  }
+
+  float readBand(float x) {
+    if (x < 0.28) return mix(uBands.x, uBands.y, x / 0.28);
+    if (x < 0.67) return mix(uBands.y, uBands.z, (x - 0.28) / 0.39);
+    return mix(uBands.z, uBands.w, (x - 0.67) / 0.33);
+  }
+
+  void main() {
+    float bass = max(uBands.x, uHits.x);
+    float treble = max(uBands.w, uHits.z);
+    float speed = 0.16 + treble * 0.52 + uHits.y * 0.22;
+    vec2 point = vec2(vUv.x * 5.2, vUv.y * 1.35);
+    vec2 motion = vec2(uTime * speed, -uTime * (0.09 + bass * 0.12));
+
+    vec2 warp = vec2(
+      fbm(point * 0.72 + motion),
+      fbm(point * 0.83 - motion.yx + vec2(13.7, 4.2))
+    );
+    float broad = fbm(point * (1.25 + bass * 0.38) + warp * (1.1 + bass));
+    float detail = fbm(point * 3.1 - warp * 1.7 + motion * 1.8);
+    float turbulence = smoothstep(0.31, 0.82, broad * 0.7 + detail * 0.56);
+
+    float columns = 44.0;
+    float columnX = floor(vUv.x * columns) / columns;
+    float localX = fract(vUv.x * columns);
+    float barWindow = smoothstep(0.08, 0.2, localX) * (1.0 - smoothstep(0.8, 0.92, localX));
+    float spectrum = readBand(columnX);
+    float crest = clamp(0.12 + spectrum * 0.6 + turbulence * 0.25 + uHits.x * 0.1, 0.08, 0.94);
+    float bars = smoothstep(crest + 0.025, crest - 0.02, vUv.y) * barWindow;
+    float peak = exp(-abs(vUv.y - crest) * 82.0) * barWindow;
+
+    vec3 cyan = vec3(0.02, 0.72, 1.2);
+    vec3 violet = vec3(0.52, 0.16, 1.15);
+    vec3 magenta = vec3(1.25, 0.06, 0.42);
+    vec3 color = mix(cyan, violet, smoothstep(0.16, 0.62, broad));
+    color = mix(color, magenta, smoothstep(0.5, 0.9, detail + vUv.x * 0.22));
+    float contrast = 1.0 + uBands.z * 0.72 + uHits.y * 0.48;
+    color = max(vec3(0.0), (color - 0.38) * contrast + 0.38);
+    color *= 0.72 + turbulence * (0.64 + treble * 0.9) + peak * 1.35;
+
+    float edge =
+      smoothstep(0.0, 0.025, vUv.x) *
+      (1.0 - smoothstep(0.975, 1.0, vUv.x)) *
+      smoothstep(0.0, 0.075, vUv.y) *
+      (1.0 - smoothstep(0.925, 1.0, vUv.y));
+    float idle = mix(0.16, 1.0, uPlaying);
+    float alpha = (turbulence * 0.34 + bars * 0.6 + peak * 0.78) * edge * idle;
+    if (alpha < 0.004) discard;
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+
+function DjFacadeEqualizer({ audioBus, lowPower }) {
+  const displayTime = useRef(0);
+  const uniforms = useMemo(
+    () => ({
+      uBands: { value: new THREE.Vector4() },
+      uHits: { value: new THREE.Vector3() },
+      uTime: { value: 0 },
+      uPlaying: { value: 0 },
+    }),
+    []
+  );
+
+  useFrame((_, delta) => {
+    if (audioBus.isPlaying) displayTime.current += delta;
+    uniforms.uTime.value = displayTime.current;
+    const smoothSignal = (current, target, attack, release) =>
+      THREE.MathUtils.damp(
+        current,
+        target,
+        target > current ? attack : release,
+        delta
+      );
+    const bands = uniforms.uBands.value;
+    bands.x = smoothSignal(bands.x, audioBus.bass, 5.2, 2.3);
+    bands.y = smoothSignal(bands.y, audioBus.lowMid, 4.8, 2.1);
+    bands.z = smoothSignal(bands.z, audioBus.presence, 4.4, 1.9);
+    bands.w = smoothSignal(bands.w, audioBus.high, 5.8, 2.6);
+
+    const hits = uniforms.uHits.value;
+    hits.x = smoothSignal(hits.x, audioBus.kick, 7.2, 3.1);
+    hits.y = smoothSignal(hits.y, audioBus.clap, 7.8, 3.4);
+    hits.z = smoothSignal(
+      hits.z,
+      Math.max(audioBus.hat, audioBus.highFlux),
+      9.2,
+      3.8
+    );
+    uniforms.uPlaying.value = THREE.MathUtils.damp(
+      uniforms.uPlaying.value,
+      audioBus.isPlaying ? 1 : 0,
+      audioBus.isPlaying ? 8 : 4,
+      delta
+    );
+  });
+
+  return (
+    <mesh position={[0, 0.58, 0.461]} renderOrder={3}>
+      <planeGeometry args={[3.52, 0.62]} />
+      <shaderMaterial
+        uniforms={uniforms}
+        defines={lowPower ? { LOW_POWER: 1 } : {}}
+        vertexShader={spectrumVertexShader}
+        fragmentShader={djFacadeFragmentShader}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
 function WallSpectrumPanel({ audioBus, lowPower, side }) {
   const displayTime = useRef(0);
   const uniforms = useMemo(
@@ -604,6 +760,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
             roughness={0.42}
           />
         </mesh>
+        <DjFacadeEqualizer audioBus={audioBus} lowPower={lowPower} />
 
         <mesh position={[0, 1.14, 0.02]} castShadow={!lowPower} receiveShadow>
           <boxGeometry args={[4.72, 0.1, 1.08]} />

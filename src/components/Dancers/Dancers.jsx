@@ -5,6 +5,8 @@ import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 const CHARACTER_ASSET_VERSION = "phasefloor-20260731";
+const DANCE_RATE_BOOST = 1.48;
+const DJ_PERFORMANCE_RATE = 1.16;
 const characterUrl = (filename) =>
   `${import.meta.env.BASE_URL}models/characters/${encodeURIComponent(filename)}?v=${CHARACTER_ASSET_VERSION}`;
 
@@ -19,6 +21,7 @@ const animations = {
   samba: characterUrl("Samba Dancing.fbx"),
   silly: characterUrl("Silly Dancing.fbx"),
   twerk: characterUrl("Dancing Twerk.fbx"),
+  djDance: characterUrl("Ymca Dance.fbx"),
   aggressiveFemale: characterUrl("Dancing Maraschino Step.fbx"),
   aggressiveMale: characterUrl("DancingAgressive.fbx"),
   idle: characterUrl("Idle.fbx"),
@@ -320,7 +323,7 @@ function Dancer({ audioBus, crowdDirector, dancer, index }) {
     const tempoResponse = Math.pow(bpmRatio, 0.72);
     const microTempo = 0.975 + ((index * 37) % 9) * 0.006;
     const preferredDanceRate =
-      dancer.speed * microTempo * 1.14 * tempoResponse;
+      dancer.speed * microTempo * DANCE_RATE_BOOST * tempoResponse;
     const danceRate = getBeatAlignedRate(
       dancerActions.danceClip.duration,
       animationBpm,
@@ -333,7 +336,7 @@ function Dancer({ audioBus, crowdDirector, dancer, index }) {
       1.65
     );
     const preferredAggressiveRate =
-      1.16 * Math.pow(aggressiveTempoRatio, 0.72);
+      1.38 * Math.pow(aggressiveTempoRatio, 0.72);
     const aggressiveRate = getBeatAlignedRate(
       dancerActions.aggressiveClip.duration,
       aggressiveBpm,
@@ -355,13 +358,13 @@ function Dancer({ audioBus, crowdDirector, dancer, index }) {
       : 0;
     const targetDanceRate = THREE.MathUtils.clamp(
       danceRate * (1 + trackDrive + percussionDrive),
-      0.78,
-      1.62
+      1.02,
+      2.02
     );
     const targetAggressiveRate = THREE.MathUtils.clamp(
       aggressiveRate * (1 + trackDrive * 0.58 + percussionDrive * 0.42),
-      0.86,
-      1.68
+      1.04,
+      2.08
     );
 
     smoothedDanceRate.current = THREE.MathUtils.damp(
@@ -547,7 +550,7 @@ function CrowdContactShadows({ dancers }) {
 export function ClubDJ({ audioBus }) {
   const sourceModel = useLoader(FBXLoader, models.male);
   const sourceIdle = useLoader(FBXLoader, animations.happyIdle);
-  const sourcePerformance = useLoader(FBXLoader, animations.hipHop);
+  const sourcePerformance = useLoader(FBXLoader, animations.djDance);
   const group = useRef(null);
   const actions = useRef(null);
   const activeMode = useRef("idle");
@@ -620,7 +623,9 @@ export function ClubDJ({ audioBus }) {
       0.72,
       1.24
     );
-    actions.current.performance.setEffectiveTimeScale(0.72 * bpmRatio);
+    actions.current.performance.setEffectiveTimeScale(
+      DJ_PERFORMANCE_RATE * bpmRatio
+    );
     actions.current.idle.setEffectiveTimeScale(0.82);
     mixer.update(Math.min(delta, 0.1));
 
