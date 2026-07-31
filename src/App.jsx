@@ -410,73 +410,201 @@ function ClubWash({ audioBus }) {
   );
 }
 
+const cosmicFloorVertexShader = /* glsl */ `
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const cosmicFloorFragmentShader = /* glsl */ `
+  uniform float uTime;
+  uniform float uBass;
+  uniform float uHigh;
+  uniform float uKick;
+  uniform float uPlaying;
+
+  varying vec2 vUv;
+
+  float hash21(vec2 point) {
+    point = fract(point * vec2(123.34, 456.21));
+    point += dot(point, point + 45.32);
+    return fract(point.x * point.y);
+  }
+
+  vec2 hash22(vec2 point) {
+    float value = hash21(point);
+    return vec2(value, hash21(point + value + 19.19));
+  }
+
+  float valueNoise(vec2 point) {
+    vec2 cell = floor(point);
+    vec2 local = fract(point);
+    local = local * local * (3.0 - 2.0 * local);
+    return mix(
+      mix(hash21(cell), hash21(cell + vec2(1.0, 0.0)), local.x),
+      mix(hash21(cell + vec2(0.0, 1.0)), hash21(cell + 1.0), local.x),
+      local.y
+    );
+  }
+
+  float fbm(vec2 point) {
+    float result = 0.0;
+    float amplitude = 0.54;
+    result += valueNoise(point) * amplitude;
+    point = point * 2.03 + vec2(8.7, 3.1);
+    amplitude *= 0.5;
+    result += valueNoise(point) * amplitude;
+    point = point * 2.01 + vec2(2.4, 11.8);
+    amplitude *= 0.5;
+    result += valueNoise(point) * amplitude;
+  #ifndef LOW_POWER
+    point = point * 1.97 + vec2(16.3, 5.6);
+    amplitude *= 0.5;
+    result += valueNoise(point) * amplitude;
+  #endif
+    return result;
+  }
+
+  float starLayer(vec2 point, float scale, float threshold, float seed) {
+    vec2 gridPoint = point * scale;
+    vec2 cell = floor(gridPoint);
+    vec2 local = fract(gridPoint) - 0.5;
+    float random = hash21(cell + seed);
+    vec2 offset = (hash22(cell + seed + 7.3) - 0.5) * 0.62;
+    float radius = mix(0.025, 0.085, pow(random, 5.0));
+    float star = 1.0 - smoothstep(0.0, radius, length(local - offset));
+    float exists = smoothstep(threshold, 1.0, random);
+    float twinkle = 0.68 + 0.32 * sin(uTime * (1.15 + random * 1.8) + random * 38.0);
+    return star * exists * twinkle;
+  }
+
+  void main() {
+    vec2 point = (vUv - 0.5) * 2.0;
+    float radius = length(point);
+    float angle = uTime * 0.012;
+    mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+    vec2 space = rotation * point;
+
+    float warpA = fbm(space * 1.7 + vec2(uTime * 0.018, 4.2));
+    float warpB = fbm(space * 2.1 - vec2(6.3, uTime * 0.014));
+    vec2 warped = space + (vec2(warpA, warpB) - 0.5) * (0.58 + uBass * 0.2);
+    float nebula = fbm(warped * 2.55 + vec2(-uTime * 0.02, 2.8));
+    float cloud = smoothstep(0.34, 0.86, nebula + warpA * 0.28);
+    float dust = fbm(warped * 6.4 - vec2(3.4, uTime * 0.025));
+
+    vec3 deepSpace = vec3(0.006, 0.009, 0.025);
+    vec3 cyanCloud = vec3(0.015, 0.34, 0.58);
+    vec3 magentaCloud = vec3(0.56, 0.035, 0.28);
+    vec3 color = deepSpace;
+    color += mix(cyanCloud, magentaCloud, smoothstep(0.25, 0.82, warpB)) * cloud * 0.46;
+    color += vec3(0.17, 0.08, 0.34) * dust * cloud * 0.24;
+
+    float stars = starLayer(warped + 3.1, 18.0, 0.86, 2.4);
+    stars += starLayer(warped - 5.7, 31.0, 0.91, 9.8) * 0.82;
+  #ifndef LOW_POWER
+    stars += starLayer(warped + 11.3, 48.0, 0.94, 17.2) * 0.62;
+  #endif
+    float starEnergy = 0.72 + uHigh * 0.78 + uKick * 0.16;
+    color += stars * starEnergy * vec3(0.72, 0.9, 1.15);
+
+    float bassWave = 0.5 + 0.5 * sin(radius * 17.0 - uTime * 0.42);
+    color += bassWave * uBass * 0.055 * vec3(0.1, 0.42, 0.72);
+    float edge = smoothstep(0.79, 0.985, radius);
+    vec3 edgeColor = mix(
+      vec3(0.02, 0.78, 1.25),
+      vec3(1.2, 0.04, 0.48),
+      0.5 + 0.5 * sin(atan(point.y, point.x) * 2.0 + uTime * 0.16)
+    );
+    color += edgeColor * edge * (0.38 + uBass * 0.2 + uHigh * 0.14);
+    color *= 0.72 + uPlaying * 0.28;
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
 function DanceFloor({ audioBus, lowPower = false }) {
-  const rings = useRef([]);
+  const displayTime = useRef(0);
+  const neonEdge = useRef(null);
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uBass: { value: 0 },
+      uHigh: { value: 0 },
+      uKick: { value: 0 },
+      uPlaying: { value: 0 },
+    }),
+    []
+  );
 
-  useFrame((state, delta) => {
-    rings.current.forEach((material, index) => {
-      if (!material) return;
-
-      const ripple = Math.max(
-        0,
-        audioBus.sub - index * 0.055 + audioBus.kick * 0.28
+  useFrame((_, delta) => {
+    if (audioBus.isPlaying) displayTime.current += delta;
+    uniforms.uTime.value = displayTime.current;
+    uniforms.uBass.value = THREE.MathUtils.damp(
+      uniforms.uBass.value,
+      audioBus.bass,
+      audioBus.bass > uniforms.uBass.value ? 5.2 : 2.4,
+      delta
+    );
+    const highTarget = Math.max(audioBus.high, audioBus.hat * 0.72);
+    uniforms.uHigh.value = THREE.MathUtils.damp(
+      uniforms.uHigh.value,
+      highTarget,
+      highTarget > uniforms.uHigh.value ? 7.2 : 3.1,
+      delta
+    );
+    uniforms.uKick.value = THREE.MathUtils.damp(
+      uniforms.uKick.value,
+      audioBus.kick,
+      audioBus.kick > uniforms.uKick.value ? 7.8 : 3.4,
+      delta
+    );
+    uniforms.uPlaying.value = THREE.MathUtils.damp(
+      uniforms.uPlaying.value,
+      audioBus.isPlaying ? 1 : 0,
+      3.5,
+      delta
+    );
+    if (neonEdge.current) {
+      neonEdge.current.opacity = THREE.MathUtils.damp(
+        neonEdge.current.opacity,
+        0.38 + uniforms.uBass.value * 0.18 + uniforms.uHigh.value * 0.12,
+        4.2,
+        delta
       );
-      material.opacity = 0.035 + ripple * (0.16 - index * 0.014);
-      material.color.offsetHSL(
-        Math.sin(state.clock.elapsedTime * 0.08 + index) * delta * 0.003,
-        0,
-        0
-      );
-    });
+    }
   });
 
   return (
     <group position={[0, -0.978, 0]}>
-      <mesh position-y={-0.01} receiveShadow={!lowPower}>
+      <mesh position-y={-0.012} receiveShadow={!lowPower}>
         <cylinderGeometry args={[3.55, 3.55, 0.035, lowPower ? 48 : 72]} />
-        <meshStandardMaterial
-          color="#0c0d15"
-          metalness={0.76}
-          roughness={0.38}
+        <meshStandardMaterial color="#090a12" metalness={0.8} roughness={0.34} />
+      </mesh>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.011}>
+        <circleGeometry args={[3.48, lowPower ? 48 : 72]} />
+        <shaderMaterial
+          uniforms={uniforms}
+          defines={lowPower ? { LOW_POWER: 1 } : {}}
+          vertexShader={cosmicFloorVertexShader}
+          fragmentShader={cosmicFloorFragmentShader}
+          toneMapped={false}
         />
       </mesh>
-      {[0, 1, 2, 3, 4, 5].map((index) => (
-        <mesh
-          key={`floor-spoke-${index}`}
-          position={[0, 0.014, 0]}
-          rotation-y={(index * Math.PI) / 6}
-        >
-          <boxGeometry args={[0.028, 0.012, 6.35]} />
-          <meshStandardMaterial
-            color={index % 2 === 0 ? "#113d52" : "#4b1739"}
-            emissive={index % 2 === 0 ? "#0ba6e8" : "#f01d7e"}
-            emissiveIntensity={0.28}
-            metalness={0.5}
-            roughness={0.42}
-          />
-        </mesh>
-      ))}
-      {[0, 1, 2, 3, 4].map((index) => {
-        const innerRadius = 0.85 + index * 0.62;
-
-        return (
-          <mesh key={innerRadius} rotation-x={-Math.PI / 2} position-y={0.022}>
-            <ringGeometry
-              args={[innerRadius, innerRadius + 0.055, lowPower ? 64 : 96]}
-            />
-            <meshBasicMaterial
-              ref={(material) => {
-                rings.current[index] = material;
-              }}
-              color={index % 2 === 0 ? "#1ac8ff" : "#ff246d"}
-              transparent
-              opacity={0.035}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-            />
-          </mesh>
-        );
-      })}
+      <mesh rotation-x={-Math.PI / 2} position-y={0.028}>
+        <torusGeometry args={[3.49, 0.042, lowPower ? 6 : 8, lowPower ? 64 : 96]} />
+        <meshBasicMaterial
+          ref={neonEdge}
+          color="#43dfff"
+          transparent
+          opacity={0.38}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
     </group>
   );
 }
@@ -729,12 +857,12 @@ function SceneThree({
       <ClubArchitecture audioBus={audioBus} lowPower={lowPower} />
       <ClubProps lowPower={lowPower} />
       <Suspense fallback={null}>
-        <ClubDJ audioBus={audioBus} />
+        <ClubDJ audioBus={audioBus} lowPower={lowPower} />
       </Suspense>
       <Suspense fallback={null}>
         <TV
           audioBus={audioBus}
-          position={[0, 4.1, -4.04]}
+          position={[0, 4.3, -4.04]}
           rotation={[0, 0, 0]}
           scale={1}
           screenSize={[5.2, 2.1]}
@@ -845,6 +973,7 @@ function TrackTimeline({ audioBus }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const scrubbing = useRef(false);
+  const scrubPosition = useRef(0);
 
   useEffect(() => {
     const updateTimeline = () => {
@@ -876,15 +1005,37 @@ function TrackTimeline({ audioBus }) {
 
   const handleChange = (event) => {
     const nextPosition = Number(event.currentTarget.value);
+    scrubPosition.current = nextPosition;
     setPosition(nextPosition);
 
     if (!scrubbing.current) commitSeek(nextPosition);
   };
 
+  const updateFromPointer = (event, shouldCommit = false) => {
+    if (!duration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = THREE.MathUtils.clamp(
+      (event.clientX - bounds.left) / bounds.width,
+      0,
+      1
+    );
+    const nextPosition = ratio * duration;
+    scrubPosition.current = nextPosition;
+    setPosition(nextPosition);
+    if (shouldCommit) commitSeek(nextPosition);
+  };
+
   const finishScrubbing = (event) => {
     if (!scrubbing.current) return;
+    if (event.type !== "pointercancel") {
+      updateFromPointer(event, true);
+    } else {
+      commitSeek(scrubPosition.current);
+    }
     scrubbing.current = false;
-    commitSeek(event.currentTarget.value);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const progress = duration > 0 ? (position / duration) * 100 : 0;
@@ -908,6 +1059,10 @@ function TrackTimeline({ audioBus }) {
         onPointerDown={(event) => {
           scrubbing.current = true;
           event.currentTarget.setPointerCapture?.(event.pointerId);
+          updateFromPointer(event);
+        }}
+        onPointerMove={(event) => {
+          if (scrubbing.current) updateFromPointer(event);
         }}
         onPointerUp={finishScrubbing}
         onPointerCancel={finishScrubbing}

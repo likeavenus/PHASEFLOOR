@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { Brush, Evaluator, SUBTRACTION } from "three-bvh-csg";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -353,6 +353,105 @@ function DjFacadeEqualizer({ audioBus, lowPower }) {
   );
 }
 
+const liveCameraShots = [
+  { position: [0, 2.15, 5.7], target: [0, 0.35, 0.55], fov: 46 },
+  { position: [-4.7, 1.35, 2.75], target: [0.4, 0.05, 0.25], fov: 50 },
+  { position: [4.35, 0.55, 2.35], target: [-0.35, 0.2, 0.35], fov: 48 },
+  { position: [0.2, 4.8, 2.15], target: [0, -0.25, 0.4], fov: 52 },
+  { position: [-2.6, 0.15, -1.35], target: [0.65, 0.15, 1.25], fov: 54 },
+];
+
+function LiveCameraPortal({ audioBus, lowPower }) {
+  const { gl, scene } = useThree();
+  const screen = useRef(null);
+  const elapsed = useRef(0);
+  const renderAccumulator = useRef(0);
+  const shotIndex = useRef(0);
+  const switchAt = useRef(5.5);
+  const smoothTarget = useRef(new THREE.Vector3(...liveCameraShots[0].target));
+  const desiredPosition = useMemo(() => new THREE.Vector3(), []);
+  const desiredTarget = useMemo(() => new THREE.Vector3(), []);
+  const liveCamera = useMemo(() => {
+    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 36);
+    camera.position.fromArray(liveCameraShots[0].position);
+    camera.lookAt(smoothTarget.current);
+    return camera;
+  }, []);
+  const renderTarget = useMemo(() => {
+    const size = lowPower ? 160 : 256;
+    const target = new THREE.WebGLRenderTarget(size, size, {
+      depthBuffer: true,
+      stencilBuffer: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+    });
+    target.texture.generateMipmaps = false;
+    target.texture.colorSpace = THREE.SRGBColorSpace;
+    return target;
+  }, [lowPower]);
+
+  useEffect(() => () => renderTarget.dispose(), [renderTarget]);
+
+  useFrame((state, delta) => {
+    elapsed.current += delta;
+    const time = elapsed.current;
+    const onKick = (audioBus.kick || 0) > 0.34;
+    if (
+      time >= switchAt.current &&
+      (onKick || !audioBus.isPlaying || time >= switchAt.current + 1.35)
+    ) {
+      const stride = 1 + ((audioBus.beatCount || 0) % 2);
+      shotIndex.current = (shotIndex.current + stride) % liveCameraShots.length;
+      switchAt.current = time + (audioBus.isPlaying ? 5.2 : 8.5);
+    }
+
+    const shot = liveCameraShots[shotIndex.current];
+    const drift = audioBus.isPlaying ? 1 : 0.35;
+    desiredPosition.fromArray(shot.position);
+    desiredPosition.x +=
+      Math.sin(time * 0.27 + shotIndex.current) * 0.13 * drift;
+    desiredPosition.y += Math.sin(time * 0.19) * 0.07 * drift;
+    desiredPosition.z +=
+      Math.cos(time * 0.23 + shotIndex.current) * 0.1 * drift;
+    desiredTarget.fromArray(shot.target);
+    desiredTarget.x += Math.sin(time * 0.16) * 0.1 * drift;
+    desiredTarget.y += (audioBus.body || 0) * 0.06;
+    desiredTarget.z += Math.cos(time * 0.13) * 0.08 * drift;
+    const moveBlend = 1 - Math.exp(-delta * 0.82);
+    liveCamera.position.lerp(desiredPosition, moveBlend);
+    smoothTarget.current.lerp(desiredTarget, moveBlend);
+    liveCamera.fov = THREE.MathUtils.damp(liveCamera.fov, shot.fov, 1.4, delta);
+    liveCamera.updateProjectionMatrix();
+    liveCamera.lookAt(smoothTarget.current);
+
+    renderAccumulator.current += delta;
+    const frameInterval = 1 / (lowPower ? 6 : 12);
+    if (renderAccumulator.current < frameInterval || !screen.current) return;
+    renderAccumulator.current %= frameInterval;
+
+    const previousTarget = gl.getRenderTarget();
+    const xrEnabled = gl.xr.enabled;
+    screen.current.visible = false;
+    gl.xr.enabled = false;
+    try {
+      gl.setRenderTarget(renderTarget);
+      gl.clear();
+      gl.render(scene, liveCamera);
+    } finally {
+      gl.setRenderTarget(previousTarget);
+      gl.xr.enabled = xrEnabled;
+      screen.current.visible = true;
+    }
+  }, -1);
+
+  return (
+    <mesh ref={screen} position={[0, 1.56, -4.105]} renderOrder={1}>
+      <circleGeometry args={[1.63, lowPower ? 40 : 64]} />
+      <meshBasicMaterial map={renderTarget.texture} toneMapped={false} />
+    </mesh>
+  );
+}
+
 function WallSpectrumPanel({ audioBus, lowPower, side }) {
   const displayTime = useRef(0);
   const uniforms = useMemo(
@@ -656,6 +755,7 @@ export function ClubArchitecture({ audioBus, lowPower = false }) {
           depthWrite={false}
         />
       </mesh>
+      <LiveCameraPortal audioBus={audioBus} lowPower={lowPower} />
       <mesh position={[0, 1.56, -4.09]}>
         <torusGeometry args={[1.82, 0.075, 16, 96]} />
         <meshStandardMaterial

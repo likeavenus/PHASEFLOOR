@@ -217,7 +217,13 @@ button {
     rgba(255, 255, 255, 0.13) 100%
   );
   background-clip: content-box;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 4px;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .music-dock__seek::-webkit-slider-runnable-track {
@@ -595,6 +601,10 @@ button {
     left: 12px;
     grid-template-columns: 42px minmax(0, 1fr) auto;
     width: auto;
+  }
+
+  .music-dock__seek {
+    height: 32px;
   }
 
   .creator-links {
