@@ -31,6 +31,7 @@ const animations = {
 };
 
 const danceVariants = ["dance", "featuredDance", "alternateDance"];
+const lowPowerCrowdIndices = [0, 1, 2, 3, 4, 6, 7, 8];
 
 const wakeThresholds = [0.12, 0.3, 0.48, 0.68, 0.82, 0.38, 0.74, 0.22, 0.56];
 
@@ -40,6 +41,7 @@ const crowd = [
     animation: "samba",
     featuredAnimation: "hipHop2",
     alternateAnimation: "ymca",
+    aggressiveAnimation: "aggressiveFemale",
     position: [-2.35, -0.96, 1.45],
     rotation: -0.18,
     tint: "#ffb6da",
@@ -51,6 +53,7 @@ const crowd = [
     animation: "hipHop",
     featuredAnimation: "gangnam",
     alternateAnimation: "dance",
+    aggressiveAnimation: "aggressiveMale",
     position: [-0.85, -0.96, 1.9],
     rotation: 0.12,
     tint: "#b8ddff",
@@ -61,7 +64,8 @@ const crowd = [
     model: "female",
     animation: "silly",
     featuredAnimation: "ymca",
-    alternateAnimation: "samba",
+    alternateAnimation: "gangnam",
+    aggressiveAnimation: "twerk",
     position: [0.9, -0.96, 1.75],
     rotation: -0.08,
     tint: "#d9b9ff",
@@ -73,6 +77,7 @@ const crowd = [
     animation: "gangnam",
     featuredAnimation: "hipHop2",
     alternateAnimation: "hipHop",
+    aggressiveAnimation: "aggressiveMale",
     position: [2.35, -0.96, 1.2],
     rotation: 0.2,
     tint: "#ffd3a6",
@@ -84,6 +89,7 @@ const crowd = [
     animation: "dance",
     featuredAnimation: "silly",
     alternateAnimation: "ymca",
+    aggressiveAnimation: "silly",
     position: [-1.65, -0.96, -0.8],
     rotation: -0.28,
     tint: "#9deee5",
@@ -95,6 +101,7 @@ const crowd = [
     animation: "ymca",
     featuredAnimation: "samba",
     alternateAnimation: "hipHop2",
+    aggressiveAnimation: "hipHop",
     position: [0, -0.96, -1.15],
     rotation: 0.14,
     tint: "#ffb3c4",
@@ -106,6 +113,7 @@ const crowd = [
     animation: "hipHop2",
     featuredAnimation: "gangnam",
     alternateAnimation: "silly",
+    aggressiveAnimation: "dance",
     position: [1.75, -0.96, -0.7],
     rotation: 0.3,
     tint: "#c4ccff",
@@ -116,9 +124,10 @@ const crowd = [
     model: "female",
     animation: "twerk",
     featuredAnimation: "hipHop",
-    alternateAnimation: "samba",
-    position: [-2.75, -1.03, 0.08],
-    rotation: 0.34,
+    alternateAnimation: "gangnam",
+    aggressiveAnimation: "silly",
+    position: [2.78, -1.03, 0.02],
+    rotation: -0.32,
     tint: "#ff9bc9",
     speed: 1.02,
     offset: 0.66,
@@ -128,8 +137,9 @@ const crowd = [
     animation: "samba",
     featuredAnimation: "dance",
     alternateAnimation: "gangnam",
-    position: [2.78, -0.96, 0.02],
-    rotation: -0.32,
+    aggressiveAnimation: "hipHop2",
+    position: [-2.75, -0.96, 0.08],
+    rotation: 0.34,
     tint: "#92e8ff",
     speed: 0.99,
     offset: 0.18,
@@ -207,7 +217,8 @@ function Dancer({ audioBus, crowdDirector, dancer, index, lowPower }) {
   const sourceAggressiveAnimation = useLoader(
     FBXLoader,
     animations[
-      dancer.model === "female" ? "aggressiveFemale" : "aggressiveMale"
+      dancer.aggressiveAnimation ||
+        (dancer.model === "female" ? "aggressiveFemale" : "aggressiveMale")
     ]
   );
   const sourceIdle = useLoader(FBXLoader, animations.idle);
@@ -785,7 +796,7 @@ export function ClubDJ({ audioBus, lowPower = false }) {
   });
 
   return (
-    <group ref={group} position={[0, -0.96, -3.85]} rotation-y={0.04}>
+    <group ref={group} position={[0, -0.96, -4.03]} rotation-y={0.04}>
       <primitive object={character} scale={0.0115} />
     </group>
   );
@@ -794,7 +805,7 @@ export function ClubDJ({ audioBus, lowPower = false }) {
 export function DanceCrowd({ audioBus, lowPower = false }) {
   const crowdDirector = useMemo(createCrowdDirector, []);
   const visibleCrowd = lowPower
-    ? crowd.filter((_, index) => [0, 1, 2, 7, 8].includes(index))
+    ? crowd.filter((_, index) => lowPowerCrowdIndices.includes(index))
     : crowd;
 
   useFrame((_, delta) => {
